@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ABN-CoalDumping</title>
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -101,15 +101,12 @@
                 <button onclick="setShift('DAY')" id="btnDay" class="flex-1 py-2 rounded-xl font-black text-[10px] uppercase transition-all bg-emerald-600 text-white shadow-md">Day Shift</button>
                 <button onclick="setShift('NIGHT')" id="btnNight" class="flex-1 py-2 rounded-xl font-black text-[10px] uppercase text-slate-500">Night Shift</button>
             </div>
-
             <div id="historyList" class="space-y-6 pb-20"></div>
-            
             <button onclick="window.print()" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-[11px] uppercase italic mt-4 no-print shadow-lg">Print Report</button>
         </div>
     </div>
 
     <script>
-        // SUPABASE config 
         const SB_URL = "https://qbeacrpoyfacgmbzxjcu.supabase.co";
         const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFiZWFjcnBveWZhY2dtYnp4amN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg2NTM5NTIsImV4cCI6MjA2NDIyOTk1Mn0.6kfxKLJxidW4BcqsMJte61AtzydrTW-1ZJIJytiUBt4";
         const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
@@ -140,28 +137,22 @@
         async function loadDayData() {
     const date = document.getElementById('logDate').value;
     const saveStatus = document.getElementById('saveStatus');
-    
     saveStatus.innerText = "⏳ Loading...";
-    
-    // 1. Reset data structure to empty slots first
     data = { A: {}, B: {} };
     const lastUsed = localStorage.getItem('lastUsedYard') || 'CY1';
 
     try {
-        // 2. Fetch from Supabase
         const { data: dbLogs, error } = await supabaseClient
             .from('daily_bucket_logs')
             .select('*')
-            .eq('log_date', date);
+            .eq('log_date', date)
+            .order('created_at', { ascending: true }); // Ginagamit ang created_at para sa tamang sequence
 
         if (error) throw error;
 
-        // 3. Fill the 'data' object with DB results
         if (dbLogs && dbLogs.length > 0) {
             dbLogs.forEach(log => {
-                if (!data[log.boiler][log.time_slot]) {
-                    data[log.boiler][log.time_slot] = [];
-                }
+                if (!data[log.boiler][log.time_slot]) data[log.boiler][log.time_slot] = [];
                 data[log.boiler][log.time_slot].push({
                     buckets: log.buckets_used,
                     tapon: log.tapon_count || 0,
@@ -170,8 +161,7 @@
             });
         }
 
-        // 4. Importante: Siguraduhin na bawat time slot ay may laman (Empty template)
-        // Kung walang nakuha sa DB para sa oras na 'yun, lagyan ng default yard.
+        // Fill empty slots
         ['A', 'B'].forEach(b => {
             timeSlots.forEach(t => {
                 if (!data[b][t] || data[b][t].length === 0) {
@@ -182,16 +172,14 @@
 
         saveStatus.innerText = "✓ Database Synced";
         saveStatus.className = "text-[8px] font-black text-emerald-500 mt-1 italic";
-
+        hasUnsavedChanges = false;
     } catch (err) {
         console.error("Load Error:", err);
         saveStatus.innerText = "⚠️ Offline Mode";
-        saveStatus.className = "text-[8px] font-black text-orange-500 mt-1 italic";
     }
-
     renderRows(); 
-    updateTotals(); // Tawagin din ito para ma-update yung circular badges sa taas
 }
+
         function switchBoiler(b) {
             currentBoiler = b;
             document.getElementById('tabA').className = b === 'A' ? "flex-1 py-2 rounded-xl font-black text-[10px] uppercase bg-emerald-600 text-white shadow-md" : "flex-1 py-2 rounded-xl font-black text-[10px] uppercase text-emerald-600";
@@ -203,9 +191,7 @@
         function renderRows() {
             const container = document.getElementById('logContainer');
             container.innerHTML = '';
-            const lastUsed = localStorage.getItem('lastUsedYard') || 'CY1';
             timeSlots.forEach(time => {
-                if (!data[currentBoiler][time]) data[currentBoiler][time] = [{ buckets: 0, tapon: 0, yard: lastUsed }];
                 data[currentBoiler][time].forEach((entry, idx) => {
                     const row = document.createElement('div');
                     row.className = `grid grid-cols-4 p-4 items-center text-center ${idx > 0 ? 'bg-slate-50' : 'bg-white'}`;
@@ -222,58 +208,71 @@
         }
 
         function updateVal(t, i, f, c) { data[currentBoiler][t][i][f] = Math.max(0, data[currentBoiler][t][i][f] + c); markUnsaved(); renderRows(); }
-        function addSplit(t) { data[currentBoiler][t].push({ buckets: 0, tapon: 0, yard: data[currentBoiler][t][0].yard }); markUnsaved(); renderRows(); }
-        function removeSplit(t, i) { data[currentBoiler][t].splice(i, 1); markUnsaved(); renderRows(); }
         
+        function addSplit(t) { 
+            ['A', 'B'].forEach(b => data[b][t].push({ buckets: 0, tapon: 0, yard: data[b][t][0].yard })); 
+            markUnsaved(); renderRows(); 
+        }
+        
+        function removeSplit(t, i) { 
+            ['A', 'B'].forEach(b => data[b][t].splice(i, 1)); 
+            markUnsaved(); renderRows(); 
+        }
+
         function updateYard(time, idx, val) {
-            data[currentBoiler][time][idx].yard = val;
-            if (idx === 0) {
-                localStorage.setItem('lastUsedYard', val);
-                const startIdx = timeSlots.indexOf(time);
+    // Boiler A lang muna ang i-update natin para siguradong walang spread
+    data[currentBoiler][time][idx].yard = val;
+    
+    // I-sync sa kabila kung idx 0 (Main Row)
+    if (idx === 0) {
+        const otherBoiler = currentBoiler === 'A' ? 'B' : 'A';
+        if (data[otherBoiler][time]) {
+            data[otherBoiler][time][0].yard = val;
+        }
+    }
+
+    localStorage.setItem('lastUsedYard', val);
+    markUnsaved(); 
+    renderRows();
+}
+        function updateTotals() {
+            let dB = 0, dT = 0, nB = 0, nT = 0, curB = 0, curT = 0;
+            let yardsUsed = new Set();
+            let timeline = []; // FIXED: Defined na ang timeline dito
+
+            timeSlots.forEach(t => {
+                const hour = parseInt(t.split(':')[0]);
                 ['A', 'B'].forEach(b => {
-                    for (let i = startIdx; i < timeSlots.length; i++) {
-                        const t = timeSlots[i];
-                        if (!data[b][t]) data[b][t] = [{ buckets: 0, tapon: 0, yard: val }];
-                        else data[b][t][0].yard = val;
+                    if (data[b][t]) {
+                        data[b][t].forEach(e => {
+                            if (hour >= 6 && hour <= 17) { dB += e.buckets; dT += e.tapon; } 
+                            else { nB += e.buckets; nT += e.tapon; }
+
+                            if (b === currentBoiler) { 
+                                curB += e.buckets; curT += e.tapon; 
+                                if (e.buckets > 0) {
+                                    if (timeline.length === 0 || timeline[timeline.length - 1].yard !== e.yard) {
+                                        timeline.push({ t: t, yard: e.yard });
+                                    }
+                                }
+                            }
+                            if (e.buckets > 0) yardsUsed.add(e.yard);
+                        });
                     }
                 });
-            }
-            markUnsaved(); renderRows();
-        }
-function updateTotals() {
-    let dB = 0, dT = 0, nB = 0, nT = 0, curB = 0, curT = 0;
-    let yardsUsed = new Set(); 
-
-    timeSlots.forEach(t => {
-        const hour = parseInt(t.split(':')[0]);
-        ['A', 'B'].forEach(b => {
-            (data[b][t] || []).forEach(e => {
-                // DAY: 06:00 to 17:00
-                if (hour >= 6 && hour <= 17) { 
-                    dB += e.buckets; dT += e.tapon; 
-                } 
-                // NIGHT: 18:00 to 05:00 (of the same calendar day)
-                else { 
-                    nB += e.buckets; nT += e.tapon; 
-                }
-
-                if (b === currentBoiler) { curB += e.buckets; curT += e.tapon; }
-                if (e.buckets > 0) yardsUsed.add(e.yard);
             });
-        });
-    });
 
-    document.getElementById('activeYardBadge').innerText = yardsUsed.size > 0 ? Array.from(yardsUsed).join(' - ') : "---";
-    document.getElementById('dayBuckets').innerText = dB; 
-    document.getElementById('dayTapon').innerText = dT;
-    document.getElementById('nightBuckets').innerText = nB; 
-    document.getElementById('nightTapon').innerText = nT;
-    document.getElementById('boilerTotalB').innerText = curB; 
-    document.getElementById('boilerTotalT').innerText = curT;
-
+            document.getElementById('activeYardBadge').innerText = yardsUsed.size > 0 ? Array.from(yardsUsed).join(' - ') : "---";
+            document.getElementById('dayBuckets').innerText = dB; 
+            document.getElementById('dayTapon').innerText = dT;
+            document.getElementById('nightBuckets').innerText = nB; 
+            document.getElementById('nightTapon').innerText = nT;
+            document.getElementById('boilerTotalB').innerText = curB; 
+            document.getElementById('boilerTotalT').innerText = curT;
 
             const notesCont = document.getElementById('dashboardNotesContainer');
             const notesDiv = document.getElementById('dashboardNotes');
+
             if (yardsUsed.size > 1 && timeline.length > 1) {
                 notesCont.classList.remove('hidden');
                 let nText = "";
@@ -293,176 +292,127 @@ function updateTotals() {
         async function manualSave() {
     const date = document.getElementById('logDate').value;
     const saveStatus = document.getElementById('saveStatus');
-    
-    saveStatus.innerText = "⏳ Saving to Cloud...";
+
+    saveStatus.innerText = "⏳ Cleaning & Saving to Cloud...";
     saveStatus.className = "text-[8px] font-black text-blue-500 mt-1 italic";
 
     const logsToUpload = [];
+
+    // 1. Ipunin lahat ng entries mula sa data object (A at B)
     ['A', 'B'].forEach(boiler => {
         Object.keys(data[boiler]).forEach(time => {
             data[boiler][time].forEach(entry => {
-                // Kahit 0 buckets, isama natin para ma-update/delete sa DB ang mga dating entries
-                logsToUpload.push({
-                    log_date: date,
-                    time_slot: time,
-                    boiler: boiler,
-                    buckets_used: Number(entry.buckets) || 0,
-                    tapon_count: Number(entry.tapon) || 0, // Idinagdag ko yung tapon field mo
-                    yard_no: entry.yard,
-                    kg_estimated: (Number(entry.buckets) || 0) * 200,
-                    is_finalized: false
-                });
+                // Isasama lang natin ang mga may buckets o may tapon para hindi mapuno ang DB ng puro zero
+                if (entry.buckets > 0 || entry.tapon > 0) {
+                    logsToUpload.push({
+                        log_date: date,
+                        time_slot: time,
+                        boiler: boiler,
+                        buckets_used: Number(entry.buckets) || 0,
+                        tapon_count: Number(entry.tapon) || 0,
+                        yard_no: entry.yard,
+                        kg_estimated: (Number(entry.buckets) || 0) * 200,
+                        is_finalized: false // default field kung meron ka nito
+                    });
+                }
             });
         });
     });
 
     try {
-        const { error } = await supabaseClient
+        // 2. 🧹 DELETE: Burahin ang lahat ng luma para sa petsang ito
+        const { error: deleteError } = await supabaseClient
             .from('daily_bucket_logs')
-            .upsert(logsToUpload, { 
-                onConflict: 'log_date, time_slot, boiler, yard_no' 
-            });
+            .delete()
+            .eq('log_date', date);
 
-        if (error) throw error;
+        if (deleteError) throw deleteError;
+
+        // 3. ➕ INSERT: Kung may bagong data, i-pasok lahat
+        if (logsToUpload.length > 0) {
+            const { error: insertError } = await supabaseClient
+                .from('daily_bucket_logs')
+                .insert(logsToUpload);
+
+            if (insertError) throw insertError;
+        }
 
         hasUnsavedChanges = false;
-        saveStatus.innerText = "✓ Synced to Supabase";
+        saveStatus.innerText = "✓ Synced Cleanly";
         saveStatus.className = "text-[8px] font-black text-emerald-500 mt-1 italic";
-        alert("Record Successfully Saved to Database!");
-        
+        alert("Record Successfully Saved & Synced!");
+
     } catch (err) {
         console.error("Save Error:", err);
-        saveStatus.innerText = "❌ Sync Failed";
+        saveStatus.innerText = "⚠️ Save Failed";
         saveStatus.className = "text-[8px] font-black text-red-500 mt-1 italic";
-        alert("Failed to save to Supabase. Check connection.");
+        alert("Save Failed! Check your internet or Supabase connection.");
     }
 }
 
-       async function filterHistory() {
-    const selDate = document.getElementById('archiveDateFilter').value || document.getElementById('logDate').value;
-    const historyList = document.getElementById('historyList');
-    
-    historyList.innerHTML = '<p class="text-center p-10 text-[10px] font-black uppercase text-slate-400 italic">Fetching Cloud Data...</p>';
+        async function filterHistory() {
+            const selDate = document.getElementById('archiveDateFilter').value || document.getElementById('logDate').value;
+            const historyList = document.getElementById('historyList');
+            historyList.innerHTML = '<p class="text-center p-10 text-[10px] font-black uppercase text-slate-400 italic">Fetching Cloud Data...</p>';
 
-    try {
-        // STRICT 1 DAY LANG: Tinanggal natin ang 'nextDayStr'
-        const { data: dbLogs, error } = await supabaseClient
-            .from('daily_bucket_logs')
-            .select('*')
-            .eq('log_date', selDate) // Isang araw lang talaga boss
-            .order('time_slot', { ascending: true });
-
-        if (error) throw error;
-
-        let filteredRows = [];
-        let yardsUsed = new Set();
-
-        dbLogs.forEach(log => {
-            const hour = parseInt(log.time_slot.split(':')[0]);
-            
-            // DITO: Kahit anong shift ang piliin, sa loob lang siya ng 24 hours ng piniling date
-            if (currentShift === 'DAY') {
-                if (hour >= 6 && hour <= 17) {
-                    if (log.buckets_used > 0 || log.tapon_count > 0) {
-                        filteredRows.push({ t: log.time_slot, b: log.boiler, bkt: log.buckets_used, tpn: log.tapon_count, yard: log.yard_no });
-                        yardsUsed.add(log.yard_no);
+            try {
+                const { data: dbLogs, error } = await supabaseClient.from('daily_bucket_logs').select('*').eq('log_date', selDate).order('time_slot', { ascending: true });
+                if (error) throw error;
+                let filteredRows = [];
+                let yardsUsed = new Set();
+                dbLogs.forEach(log => {
+                    const hour = parseInt(log.time_slot.split(':')[0]);
+                    const isDay = hour >= 6 && hour <= 17;
+                    if ((currentShift === 'DAY' && isDay) || (currentShift === 'NIGHT' && !isDay)) {
+                        if (log.buckets_used > 0 || log.tapon_count > 0) {
+                            filteredRows.push({ t: log.time_slot, b: log.boiler, bkt: log.buckets_used, tpn: log.tapon_count, yard: log.yard_no });
+                            yardsUsed.add(log.yard_no);
+                        }
                     }
-                }
-            } else {
-                // NIGHT SHIFT (Strict 24-hr): 18:00 hanggang 23:00 AT 00:00 hanggang 05:00 ng PAREHONG petsa
-                if (hour >= 18 || hour < 6) {
-                    if (log.buckets_used > 0 || log.tapon_count > 0) {
-                        filteredRows.push({ t: log.time_slot, b: log.boiler, bkt: log.buckets_used, tpn: log.tapon_count, yard: log.yard_no });
-                        yardsUsed.add(log.yard_no);
-                    }
-                }
-            }
-        });
+                });
+                renderArchiveUI(selDate, filteredRows, yardsUsed);
+            } catch (err) { historyList.innerHTML = '<p>Error loading data.</p>'; }
+        }
 
-        renderArchiveUI(selDate, filteredRows, yardsUsed);
-
-    } catch (err) {
-        console.error("Archive Error:", err);
-        historyList.innerHTML = '<p class="text-center p-10 text-red-500 font-bold">Error loading cloud data.</p>';
-    }
-}
-// Separate function para malinis ang render logic
-function renderArchiveUI(selDate, filteredRows, yardsUsed) {
-    // 1. Compute Grand Total para sa buong 24 Hours (Lahat ng nasa filteredRows)
+        function renderArchiveUI(selDate, filteredRows, yardsUsed) {
     const grandTotalBkt = filteredRows.reduce((sum, r) => sum + (r.bkt || 0), 0);
     const grandTotalTpn = filteredRows.reduce((sum, r) => sum + (r.tpn || 0), 0);
-    const grandTotalKg = grandTotalBkt * 200;
+    
+    // Check kung may rows, kung wala, ipakita ang "No Records"
+    const rowsHTML = filteredRows.length > 0 
+        ? filteredRows.map(r => `<tr><td class="p-3 font-bold">${r.t}</td><td class="p-3 text-center">${r.b}</td><td class="p-3 text-center font-black">${r.bkt}</td><td class="p-3 text-center text-slate-300">${r.tpn}</td><td class="p-3 text-right font-black text-emerald-600">${r.yard}</td></tr>`).join('')
+        : `<tr><td colspan="5" class="p-10 text-center italic text-slate-400">No records found for this shift.</td></tr>`;
 
     const tableHTML = `
         <div class="bg-white rounded-3xl overflow-hidden mb-4 border border-slate-200 shadow-sm">
             <div class="${currentShift === 'DAY' ? 'bg-emerald-600' : 'bg-indigo-600'} text-white px-4 py-3 text-[10px] font-black uppercase tracking-widest text-center">
-                ${currentShift} SHIFT LOG (${currentShift === 'DAY' ? '06:00 - 18:00' : '18:00 - 06:00'})
+                ${currentShift} SHIFT LOG
             </div>
             <table class="w-full text-[10px] text-left">
                 <thead class="bg-slate-50 border-b">
-                    <tr><th class="p-3">TIME</th><th class="p-3 text-center">BLR</th><th class="p-3 text-center">BKT</th><th class="p-3 text-center text-slate-400">TPN</th><th class="p-3 text-right">YARD</th></tr>
+                    <tr><th class="p-3">TIME</th><th class="p-3 text-center">BLR</th><th class="p-3 text-center">BKT</th><th class="p-3 text-center">TPN</th><th class="p-3 text-right">YARD</th></tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
-                    ${filteredRows.length > 0 ? filteredRows.map(r => `
-                        <tr>
-                            <td class="p-3 font-bold text-slate-700">${r.t}</td>
-                            <td class="p-3 text-center">${r.b}</td>
-                            <td class="p-3 text-center font-black">${r.bkt}</td>
-                            <td class="p-3 text-center text-slate-300">${r.tpn}</td>
-                            <td class="p-3 text-right font-black text-emerald-600">${r.yard}</td>
-                        </tr>`).join('') : '<tr><td colspan="5" class="p-6 text-center italic text-slate-400">No records found in cloud</td></tr>'}
+                    ${rowsHTML}
                 </tbody>
             </table>
         </div>`;
-
-    const signatoriesHTML = `
-        <div class="mt-12 space-y-10 px-4 pb-20">
-            <div class="text-center border-b border-slate-300 pb-2">
-                <input type="text" placeholder="NAME 1 / NAME 2 / NAME 3" class="w-full text-[11px] font-black text-center uppercase outline-none bg-transparent">
-                <p class="text-[8px] font-black text-emerald-600 mt-2 uppercase italic tracking-[0.2em]">Prepared By</p>
-            </div>
-        </div>`;
-
-    // 2. I-render na natin kasama ang GRAND TOTAL CARD sa itaas
+        
     document.getElementById('historyList').innerHTML = `
-        <div class="grid grid-cols-2 gap-3 mb-6">
-            <div class="bg-slate-900 rounded-[2rem] p-5 text-white shadow-xl col-span-2 border-b-4 border-emerald-500">
-                <p class="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-1">24H Grand Total (${selDate})</p>
-                <div class="flex justify-between items-center">
-                    <div>
-                        <h3 class="text-3xl font-black">${grandTotalBkt.toLocaleString()} <small class="text-xs opacity-50 font-normal">BKT</small></h3>
-                        <p class="text-[10px] text-emerald-300 font-bold uppercase mt-1">≈ ${grandTotalKg.toLocaleString()} KG TOTAL</p>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-2xl font-black text-slate-400">${grandTotalTpn} <small class="text-xs opacity-50 font-normal">TPN</small></p>
-                        <p class="text-[8px] font-black uppercase opacity-40">Tapon Count</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-white p-4 rounded-3xl border border-slate-200 text-center shadow-sm">
-                <p class="text-[7px] font-black text-slate-400 uppercase tracking-tighter mb-1">Active Yards</p>
-                <p class="text-[10px] font-black text-emerald-700 uppercase">${yardsUsed.size > 0 ? Array.from(yardsUsed).join(' - ') : 'NONE'}</p>
-            </div>
-            
-            <div class="bg-white p-4 rounded-3xl border border-slate-200 text-center shadow-sm">
-                <p class="text-[7px] font-black text-slate-400 uppercase tracking-tighter mb-1">Report Mode</p>
-                <p class="text-[10px] font-black text-slate-900 uppercase">${currentShift} SHIFT</p>
+        <div class="bg-slate-900 rounded-[2rem] p-5 text-white mb-6 border-b-4 border-emerald-500 shadow-lg">
+            <p class="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-1">Grand Total (${selDate})</p>
+            <div class="flex justify-between items-end">
+                <h3 class="text-3xl font-black">${grandTotalBkt.toLocaleString()} <small class="text-xs opacity-50">BKT</small></h3>
+                <p class="text-xl font-black text-slate-400">${grandTotalTpn} <small class="text-xs opacity-50">TPN</small></p>
             </div>
         </div>
-
-        ${tableHTML}
-        ${signatoriesHTML}`;
+        ${tableHTML}`;
 }
 
         window.onbeforeunload = function() { if (hasUnsavedChanges) return "Unsaved changes exist!"; };
-        // SA PINAKADULO NG <script> MO, PALITAN ITO:
-const now = new Date();
-// I-force natin ang Manila Time format (YYYY-MM-DD)
-const phTime = now.toLocaleDateString('en-CA', {timeZone: 'Asia/Manila'}); 
-document.getElementById('logDate').value = phTime;
-
-loadDayData();
+        const phTime = new Date().toLocaleDateString('en-CA', {timeZone: 'Asia/Manila'}); 
+        document.getElementById('logDate').value = phTime;
+        loadDayData();
     </script>
 </body>
 </html>
