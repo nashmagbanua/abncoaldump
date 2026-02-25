@@ -7,6 +7,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .btn-tap:active { transform: scale(0.95); }
@@ -108,6 +109,11 @@
     </div>
 
     <script>
+        // SUPABASE config 
+        const SB_URL = "https://qbeacrpoyfacgmbzxjcu.supabase.co";
+        const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFiZWFjcnBveWZhY2dtYnp4amN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg2NTM5NTIsImV4cCI6MjA2NDIyOTk1Mn0.6kfxKLJxidW4BcqsMJte61AtzydrTW-1ZJIJytiUBt4";
+        const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+        
         const yards = ["CY1", "CY2", "CY3", "CY4", "CY5", "CY6", "CY7", "CY8", "CY9"];
         const timeSlots = ["00:00","01:00","02:00","03:00","04:00","05:00","06:00","07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"];
         let data = { A: {}, B: {} };
@@ -131,13 +137,61 @@
             filterHistory();
         }
 
-        function loadDayData() {
-            const date = document.getElementById('logDate').value;
-            const saved = localStorage.getItem(`coalData_${date}`);
-            data = saved ? JSON.parse(saved) : { A: {}, B: {} };
-            renderRows();
+        async function loadDayData() {
+    const date = document.getElementById('logDate').value;
+    const saveStatus = document.getElementById('saveStatus');
+    
+    saveStatus.innerText = "⏳ Loading...";
+    
+    // 1. Reset data structure to empty slots first
+    data = { A: {}, B: {} };
+    const lastUsed = localStorage.getItem('lastUsedYard') || 'CY1';
+
+    try {
+        // 2. Fetch from Supabase
+        const { data: dbLogs, error } = await supabaseClient
+            .from('daily_bucket_logs')
+            .select('*')
+            .eq('log_date', date);
+
+        if (error) throw error;
+
+        // 3. Fill the 'data' object with DB results
+        if (dbLogs && dbLogs.length > 0) {
+            dbLogs.forEach(log => {
+                if (!data[log.boiler][log.time_slot]) {
+                    data[log.boiler][log.time_slot] = [];
+                }
+                data[log.boiler][log.time_slot].push({
+                    buckets: log.buckets_used,
+                    tapon: log.tapon_count || 0,
+                    yard: log.yard_no
+                });
+            });
         }
 
+        // 4. Importante: Siguraduhin na bawat time slot ay may laman (Empty template)
+        // Kung walang nakuha sa DB para sa oras na 'yun, lagyan ng default yard.
+        ['A', 'B'].forEach(b => {
+            timeSlots.forEach(t => {
+                if (!data[b][t] || data[b][t].length === 0) {
+                    data[b][t] = [{ buckets: 0, tapon: 0, yard: lastUsed }];
+                }
+            });
+        });
+
+        saveStatus.innerText = "✓ Database Synced";
+        saveStatus.className = "text-[8px] font-black text-emerald-500 mt-1 italic";
+
+    } catch (err) {
+        console.error("Load Error:", err);
+        saveStatus.innerText = "⚠️ Offline Mode";
+        saveStatus.className = "text-[8px] font-black text-orange-500 mt-1 italic";
+    }
+
+    renderRows(); 
+    updateTotals(); // Tawagin din ito para ma-update yung circular badges sa taas
+}
         function switchBoiler(b) {
             currentBoiler = b;
             document.getElementById('tabA').className = b === 'A' ? "flex-1 py-2 rounded-xl font-black text-[10px] uppercase bg-emerald-600 text-white shadow-md" : "flex-1 py-2 rounded-xl font-black text-[10px] uppercase text-emerald-600";
@@ -229,108 +283,154 @@
             document.getElementById('saveStatus').className = "text-[8px] font-black text-orange-500 mt-1 italic";
         }
 
-        function manualSave() {
-            const date = document.getElementById('logDate').value;
-            localStorage.setItem(`coalData_${date}`, JSON.stringify(data));
-            hasUnsavedChanges = false;
-            document.getElementById('saveStatus').innerText = "✓ Record Saved";
-            document.getElementById('saveStatus').className = "text-[8px] font-black text-emerald-500 mt-1 italic";
-            alert("Record Updated and Saved!");
-        }
+        async function manualSave() {
+    const date = document.getElementById('logDate').value;
+    const saveStatus = document.getElementById('saveStatus');
+    
+    saveStatus.innerText = "⏳ Saving to Cloud...";
+    saveStatus.className = "text-[8px] font-black text-blue-500 mt-1 italic";
 
-        function filterHistory() {
-            const selDate = document.getElementById('archiveDateFilter').value || document.getElementById('logDate').value;
-            const currentDayData = JSON.parse(localStorage.getItem(`coalData_${selDate}`) || '{"A":{},"B":{}}');
-            
-            // For Night Shift wrap-around
-            const nextDay = new Date(selDate); nextDay.setDate(nextDay.getDate() + 1);
-            const nextDayStr = nextDay.toISOString().split('T')[0];
-            const nextDayData = JSON.parse(localStorage.getItem(`coalData_${nextDayStr}`) || '{"A":{},"B":{}}');
+    const logsToUpload = [];
+    ['A', 'B'].forEach(boiler => {
+        Object.keys(data[boiler]).forEach(time => {
+            data[boiler][time].forEach(entry => {
+                // Kahit 0 buckets, isama natin para ma-update/delete sa DB ang mga dating entries
+                logsToUpload.push({
+                    log_date: date,
+                    time_slot: time,
+                    boiler: boiler,
+                    buckets_used: Number(entry.buckets) || 0,
+                    tapon_count: Number(entry.tapon) || 0, // Idinagdag ko yung tapon field mo
+                    yard_no: entry.yard,
+                    kg_estimated: (Number(entry.buckets) || 0) * 200,
+                    is_finalized: false
+                });
+            });
+        });
+    });
 
-            let filteredRows = [], yardsUsed = new Set();
-
-            timeSlots.forEach(t => {
-                const hour = parseInt(t.split(':')[0]);
-                const checkRow = (d, time) => {
-                    ['A', 'B'].forEach(b => {
-                        (d[b][time] || []).forEach(e => {
-                            if(e.buckets > 0 || e.tapon > 0) {
-                                filteredRows.push({ t: time, b, bkt: e.buckets, tpn: e.tapon, yard: e.yard });
-                                yardsUsed.add(e.yard);
-                            }
-                        });
-                    });
-                };
-
-                if (currentShift === 'DAY') {
-                    if (hour >= 6 && hour <= 17) checkRow(currentDayData, t);
-                } else {
-                    if (hour >= 18) checkRow(currentDayData, t);
-                    else if (hour < 6) checkRow(nextDayData, t);
-                }
+    try {
+        const { error } = await supabaseClient
+            .from('daily_bucket_logs')
+            .upsert(logsToUpload, { 
+                onConflict: 'log_date, time_slot, boiler, yard_no' 
             });
 
-            const tableHTML = `
-                <div class="bg-white rounded-3xl overflow-hidden mb-4 border border-slate-200 shadow-sm">
-                    <div class="${currentShift === 'DAY' ? 'bg-emerald-600' : 'bg-indigo-600'} text-white px-4 py-3 text-[10px] font-black uppercase tracking-widest text-center">
-                        ${currentShift} SHIFT LOG (${currentShift === 'DAY' ? '06:00 - 18:00' : '18:00 - 06:00'})
-                    </div>
-                    <table class="w-full text-[10px] text-left">
-                        <thead class="bg-slate-50 border-b">
-                            <tr><th class="p-3">TIME</th><th class="p-3 text-center">BLR</th><th class="p-3 text-center">BKT</th><th class="p-3 text-center text-slate-400">TPN</th><th class="p-3 text-right">YARD</th></tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            ${filteredRows.length > 0 ? filteredRows.map(r => `<tr><td class="p-3 font-bold text-slate-700">${r.t}</td><td class="p-3 text-center">${r.b}</td><td class="p-3 text-center font-black">${r.bkt}</td><td class="p-3 text-center text-slate-300">${r.tpn}</td><td class="p-3 text-right font-black text-emerald-600">${r.yard}</td></tr>`).join('') : '<tr><td colspan="5" class="p-6 text-center italic text-slate-400">No records found for this shift</td></tr>'}
-                        </tbody>
-                    </table>
-                </div>`;
+        if (error) throw error;
 
-           const signatoriesHTML = `
-                <div class="mt-12 space-y-10 px-4 pb-20">
-                    <div class="space-y-6">
-                        <div class="text-center border-b border-slate-300 pb-2">
-                            <input type="text" placeholder="NAME 1 / NAME 2 / NAME 3" 
-                                class="w-full text-[11px] font-black text-center uppercase outline-none bg-transparent placeholder:text-slate-200 tracking-widest">
-                            <p class="text-[8px] font-black text-emerald-600 mt-2 uppercase italic tracking-[0.2em]">Prepared By / Opscrew In-Charge</p>
-                        </div>
-                        
-                        <div class="text-center border-b border-slate-300 pb-2">
-                            <input type="text" placeholder="NAME 1 / NAME 2 / NAME 3" 
-                                class="w-full text-[11px] font-black text-center uppercase outline-none bg-transparent placeholder:text-slate-200 tracking-widest">
-                            <p class="text-[8px] font-black text-emerald-600 mt-2 uppercase italic tracking-[0.2em]">Operators</p>
-                        </div>
-                    </div>
+        hasUnsavedChanges = false;
+        saveStatus.innerText = "✓ Synced to Supabase";
+        saveStatus.className = "text-[8px] font-black text-emerald-500 mt-1 italic";
+        alert("Record Successfully Saved to Database!");
+        
+    } catch (err) {
+        console.error("Save Error:", err);
+        saveStatus.innerText = "❌ Sync Failed";
+        saveStatus.className = "text-[8px] font-black text-red-500 mt-1 italic";
+        alert("Failed to save to Supabase. Check connection.");
+    }
+}
 
-                    <div class="pt-4 bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100">
-                        <p class="text-[8px] font-black text-slate-400 mb-6 uppercase text-center tracking-[0.3em] italic">Verified by Utilities Supervisors</p>
-                        <div class="grid grid-cols-2 gap-x-10 gap-y-6">
-                            <div class="text-center">
-                                <div class="text-[10px] font-black text-slate-800 border-b border-slate-300 pb-1">A. ORTEGA</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="text-[10px] font-black text-slate-800 border-b border-slate-300 pb-1">A. CALISAY</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="text-[10px] font-black text-slate-800 border-b border-slate-300 pb-1">A. APUANG</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="text-[10px] font-black text-slate-800 border-b border-slate-300 pb-1">J. REYES</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>`;
-            document.getElementById('historyList').innerHTML = `
-                <div class="bg-white p-8 rounded-[3rem] border border-slate-200 text-center shadow-sm mb-6">
-                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Selected Date</p>
-                    <p class="text-2xl font-black text-slate-900 mb-4">${selDate}</p>
-                    <div class="inline-block bg-emerald-50 border border-emerald-100 px-6 py-2 rounded-full">
-                        <p class="text-[7px] font-black text-emerald-600 uppercase mb-0.5 tracking-tighter">Shift Yards</p>
-                        <p class="text-xs font-black text-emerald-900 uppercase">${yardsUsed.size > 0 ? Array.from(yardsUsed).join(' - ') : 'NONE'}</p>
-                    </div>
-                </div>
-                ${tableHTML}
-                ${signatoriesHTML}`;
-        }
+        async function filterHistory() {
+    const selDate = document.getElementById('archiveDateFilter').value || document.getElementById('logDate').value;
+    const historyList = document.getElementById('historyList');
+    
+    // Loading indicator
+    historyList.innerHTML = '<p class="text-center p-10 text-[10px] font-black uppercase text-slate-400 italic">Fetching Cloud Data...</p>';
+
+    // Para sa Night Shift: Kunin din ang data ng susunod na araw
+    const nextDay = new Date(selDate); 
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDayStr = nextDay.toISOString().split('T')[0];
+
+    try {
+        // Hila ng data mula sa Supabase para sa dalawang araw
+        const { data: dbLogs, error } = await supabaseClient
+            .from('daily_bucket_logs')
+            .select('*')
+            .in('log_date', [selDate, nextDayStr])
+            .order('time_slot', { ascending: true });
+
+        if (error) throw error;
+
+        let filteredRows = [];
+        let yardsUsed = new Set();
+
+        // Logic para sa Shift Filtering
+        dbLogs.forEach(log => {
+            const hour = parseInt(log.time_slot.split(':')[0]);
+            
+            if (currentShift === 'DAY') {
+                // Day Shift: Same day lang, 06:00 to 17:00
+                if (log.log_date === selDate && hour >= 6 && hour <= 17) {
+                    if (log.buckets_used > 0 || log.tapon_count > 0) {
+                        filteredRows.push({ t: log.time_slot, b: log.boiler, bkt: log.buckets_used, tpn: log.tapon_count, yard: log.yard_no });
+                        yardsUsed.add(log.yard_no);
+                    }
+                }
+            } else {
+                // Night Shift: 18:00 (selDate) to 05:00 (nextDayStr)
+                const isNightToday = (log.log_date === selDate && hour >= 18);
+                const isEarlyTomorrow = (log.log_date === nextDayStr && hour < 6);
+                
+                if (isNightToday || isEarlyTomorrow) {
+                    if (log.buckets_used > 0 || log.tapon_count > 0) {
+                        filteredRows.push({ t: log.time_slot, b: log.boiler, bkt: log.buckets_used, tpn: log.tapon_count, yard: log.yard_no });
+                        yardsUsed.add(log.yard_no);
+                    }
+                }
+            }
+        });
+
+        // Re-render ang Table at Signatories (Gamit yung existing template mo)
+        renderArchiveUI(selDate, filteredRows, yardsUsed);
+
+    } catch (err) {
+        console.error("Archive Error:", err);
+        historyList.innerHTML = '<p class="text-center p-10 text-red-500 font-bold">Error loading cloud data. Please check connection.</p>';
+    }
+}
+
+// Separate function para malinis ang render logic
+function renderArchiveUI(selDate, filteredRows, yardsUsed) {
+    const tableHTML = `
+        <div class="bg-white rounded-3xl overflow-hidden mb-4 border border-slate-200 shadow-sm">
+            <div class="${currentShift === 'DAY' ? 'bg-emerald-600' : 'bg-indigo-600'} text-white px-4 py-3 text-[10px] font-black uppercase tracking-widest text-center">
+                ${currentShift} SHIFT LOG (${currentShift === 'DAY' ? '06:00 - 18:00' : '18:00 - 06:00'})
+            </div>
+            <table class="w-full text-[10px] text-left">
+                <thead class="bg-slate-50 border-b">
+                    <tr><th class="p-3">TIME</th><th class="p-3 text-center">BLR</th><th class="p-3 text-center">BKT</th><th class="p-3 text-center text-slate-400">TPN</th><th class="p-3 text-right">YARD</th></tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    ${filteredRows.length > 0 ? filteredRows.map(r => `<tr><td class="p-3 font-bold text-slate-700">${r.t}</td><td class="p-3 text-center">${r.b}</td><td class="p-3 text-center font-black">${r.bkt}</td><td class="p-3 text-center text-slate-300">${r.tpn}</td><td class="p-3 text-right font-black text-emerald-600">${r.yard}</td></tr>`).join('') : '<tr><td colspan="5" class="p-6 text-center italic text-slate-400">No records found in cloud</td></tr>'}
+                </tbody>
+            </table>
+        </div>`;
+
+    // Signatories (Yung original HTML mo pa rin ito)
+   const signatoriesHTML = `
+    <div class="mt-12 space-y-10 px-4 pb-20">
+        <div class="space-y-6">
+            <div class="text-center border-b border-slate-300 pb-2">
+                <input type="text" placeholder="NAME 1 / NAME 2 / NAME 3" class="w-full text-[11px] font-black text-center uppercase outline-none bg-transparent">
+                <p class="text-[8px] font-black text-emerald-600 mt-2 uppercase italic tracking-[0.2em]">Prepared By</p>
+            </div>
+        </div>
+        </div>`;
+
+    document.getElementById('historyList').innerHTML = `
+        <div class="bg-white p-8 rounded-[3rem] border border-slate-200 text-center shadow-sm mb-6">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Selected Date</p>
+            <p class="text-2xl font-black text-slate-900 mb-4">${selDate}</p>
+            <div class="inline-block bg-emerald-50 border border-emerald-100 px-6 py-2 rounded-full">
+                <p class="text-[7px] font-black text-emerald-600 uppercase mb-0.5 tracking-tighter">Shift Yards</p>
+                <p class="text-xs font-black text-emerald-900 uppercase">${yardsUsed.size > 0 ? Array.from(yardsUsed).join(' - ') : 'NONE'}</p>
+            </div>
+        </div>
+        ${tableHTML}
+        ${signatoriesHTML}`;
+}
 
         window.onbeforeunload = function() { if (hasUnsavedChanges) return "Unsaved changes exist!"; };
         document.getElementById('logDate').valueAsDate = new Date();
