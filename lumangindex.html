@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ABN-CoalDumping</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .btn-tap:active { transform: scale(0.95); }
+        ::-webkit-scrollbar { display: none; }
+        body { background: #f8fafc; font-family: sans-serif; min-height: 100vh; }
+        .page { display: none; min-height: 100vh; padding-bottom: 160px; }
+        .active-page { display: block; }
+        .glass-card { background: white; border: 1px solid #e2e8f0; border-radius: 2rem; }
+        @media print { .no-print { display: none; } }
+    </style>
+</head>
+<body class="text-slate-900">
+
+    <div id="entryPage" class="page active-page">
+        <div class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b p-4 shadow-sm">
+            <div class="flex justify-between items-center max-w-lg mx-auto">
+                <div>
+                    <h1 class="text-xl font-black italic text-emerald-900 uppercase leading-none">COAL<span class="text-emerald-500">DUMPING</span></h1>
+                    <p id="saveStatus" class="text-[8px] font-black text-slate-400 uppercase mt-1 italic">Ready to Log ?</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="showPage('archivePage')" class="bg-emerald-600 text-white p-2.5 rounded-xl btn-tap shadow-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" /></svg>
+                    </button>
+                    <input type="date" id="logDate" onchange="loadDayData()" class="bg-emerald-50 border-none rounded-xl p-2 text-xs font-black text-emerald-700 outline-none">
+                </div>
+            </div>
+        </div>
+
+        <div class="max-w-lg mx-auto px-4 mt-4">
+            <div class="bg-emerald-900 rounded-[2.5rem] p-6 text-white shadow-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-[10px] font-black uppercase text-emerald-400 italic">Current Yards</span>
+                    <span id="activeYardBadge" class="bg-emerald-500 px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">---</span>
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div class="bg-white/10 rounded-3xl p-4 text-center">
+                        <p class="text-[9px] font-black uppercase text-emerald-400 mb-1">Day Shift</p>
+                        <div class="flex justify-between items-end"><p id="dayBuckets" class="text-2xl font-black">0</p><p id="dayTapon" class="text-sm font-black text-emerald-300">0 <small class="text-[8px] opacity-50">Tpn</small></p></div>
+                    </div>
+                    <div class="bg-white/10 rounded-3xl p-4 text-center">
+                        <p class="text-[9px] font-black uppercase text-blue-400 mb-1">Night Shift</p>
+                        <div class="flex justify-between items-end"><p id="nightBuckets" class="text-2xl font-black">0</p><p id="nightTapon" class="text-sm font-black text-blue-300">0 <small class="text-[8px] opacity-50">Tpn</small></p></div>
+                    </div>
+                </div>
+                <div id="dashboardNotesContainer" class="pt-4 border-t border-white/10 hidden">
+                    <div id="dashboardNotes" class="text-[9px] font-mono text-emerald-200 uppercase leading-relaxed italic"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex mt-6 bg-slate-200/50 p-1.5 rounded-2xl max-w-[280px] mx-auto border border-white">
+            <button onclick="switchBoiler('A')" id="tabA" class="flex-1 py-2 rounded-xl font-black text-[10px] uppercase transition-all bg-emerald-600 text-white shadow-md">Boiler A</button>
+            <button onclick="switchBoiler('B')" id="tabB" class="flex-1 py-2 rounded-xl font-black text-[10px] uppercase text-emerald-600">Boiler B</button>
+        </div>
+
+        <div class="max-w-lg mx-auto p-4 mt-2">
+            <div class="glass-card overflow-hidden">
+                <div class="grid grid-cols-4 bg-emerald-50 p-4 text-[9px] font-black text-emerald-800 uppercase text-center border-b">
+                    <div>Time</div><div>Buckets</div><div>Tapon</div><div>Yard</div>
+                </div>
+                <div id="logContainer" class="divide-y divide-slate-100"></div>
+            </div>
+        </div>
+
+        <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-5 z-40 no-print">
+            <div class="max-w-lg mx-auto flex justify-between items-end">
+                <div>
+                    <span id="footerLabel" class="text-[10px] font-black text-emerald-500 uppercase italic">Boiler A Total</span>
+                    <div class="flex gap-4">
+                        <p class="text-2xl font-black text-emerald-900"><span id="boilerTotalB">0</span> <small class="text-[10px] opacity-40 uppercase">Bkt</small></p>
+                        <p class="text-2xl font-black text-slate-400"><span id="boilerTotalT">0</span> <small class="text-[10px] opacity-40 uppercase">Tpn</small></p>
+                    </div>
+                </div>
+                <button onclick="manualSave()" class="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black text-[11px] uppercase italic btn-tap shadow-lg">Save Record</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="archivePage" class="page">
+        <div class="sticky top-0 z-50 bg-white border-b p-4 flex justify-between items-center no-print">
+            <div class="flex items-center gap-3">
+                <button onclick="showPage('entryPage')" class="bg-slate-100 p-2.5 rounded-xl text-slate-600 font-bold">←</button>
+                <h2 class="text-xl font-black italic uppercase text-slate-800">Master <span class="text-emerald-500">Log</span></h2>
+            </div>
+            <input type="date" id="archiveDateFilter" onchange="filterHistory()" class="bg-slate-100 border-none rounded-xl p-2 text-xs font-black text-slate-700 outline-none">
+        </div>
+
+        <div class="max-w-lg mx-auto p-4">
+            <div class="flex bg-slate-200/50 p-1.5 rounded-2xl mb-6 border border-white no-print">
+                <button onclick="setShift('DAY')" id="btnDay" class="flex-1 py-2 rounded-xl font-black text-[10px] uppercase transition-all bg-emerald-600 text-white shadow-md">Day Shift</button>
+                <button onclick="setShift('NIGHT')" id="btnNight" class="flex-1 py-2 rounded-xl font-black text-[10px] uppercase text-slate-500">Night Shift</button>
+            </div>
+
+            <div id="historyList" class="space-y-6 pb-20"></div>
+            
+            <button onclick="window.print()" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-[11px] uppercase italic mt-4 no-print shadow-lg">Print Report</button>
+        </div>
+    </div>
+
+    <script>
+        const yards = ["CY1", "CY2", "CY3", "CY4", "CY5", "CY6", "CY7", "CY8", "CY9"];
+        const timeSlots = ["00:00","01:00","02:00","03:00","04:00","05:00","06:00","07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"];
+        let data = { A: {}, B: {} };
+        let currentBoiler = 'A';
+        let currentShift = 'DAY';
+        let hasUnsavedChanges = false;
+
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active-page'));
+            document.getElementById(pageId).classList.add('active-page');
+            if(pageId === 'archivePage') {
+                document.getElementById('archiveDateFilter').value = document.getElementById('logDate').value;
+                filterHistory();
+            }
+        }
+
+        function setShift(shift) {
+            currentShift = shift;
+            document.getElementById('btnDay').className = shift === 'DAY' ? "flex-1 py-2 rounded-xl font-black text-[10px] uppercase bg-emerald-600 text-white shadow-md" : "flex-1 py-2 rounded-xl font-black text-[10px] uppercase text-slate-500";
+            document.getElementById('btnNight').className = shift === 'NIGHT' ? "flex-1 py-2 rounded-xl font-black text-[10px] uppercase bg-indigo-600 text-white shadow-md" : "flex-1 py-2 rounded-xl font-black text-[10px] uppercase text-slate-500";
+            filterHistory();
+        }
+
+        function loadDayData() {
+            const date = document.getElementById('logDate').value;
+            const saved = localStorage.getItem(`coalData_${date}`);
+            data = saved ? JSON.parse(saved) : { A: {}, B: {} };
+            renderRows();
+        }
+
+        function switchBoiler(b) {
+            currentBoiler = b;
+            document.getElementById('tabA').className = b === 'A' ? "flex-1 py-2 rounded-xl font-black text-[10px] uppercase bg-emerald-600 text-white shadow-md" : "flex-1 py-2 rounded-xl font-black text-[10px] uppercase text-emerald-600";
+            document.getElementById('tabB').className = b === 'B' ? "flex-1 py-2 rounded-xl font-black text-[10px] uppercase bg-emerald-600 text-white shadow-md" : "flex-1 py-2 rounded-xl font-black text-[10px] uppercase text-emerald-600";
+            document.getElementById('footerLabel').innerText = `Boiler ${b} Total`;
+            renderRows();
+        }
+
+        function renderRows() {
+            const container = document.getElementById('logContainer');
+            container.innerHTML = '';
+            const lastUsed = localStorage.getItem('lastUsedYard') || 'CY1';
+            timeSlots.forEach(time => {
+                if (!data[currentBoiler][time]) data[currentBoiler][time] = [{ buckets: 0, tapon: 0, yard: lastUsed }];
+                data[currentBoiler][time].forEach((entry, idx) => {
+                    const row = document.createElement('div');
+                    row.className = `grid grid-cols-4 p-4 items-center text-center ${idx > 0 ? 'bg-slate-50' : 'bg-white'}`;
+                    row.innerHTML = `
+                        <div><span class="text-[10px] font-black ${idx > 0 ? 'text-slate-300' : 'text-slate-800'}">${idx === 0 ? time : ''}</span>
+                        ${idx === 0 ? `<br><button onclick="addSplit('${time}')" class="text-[7px] font-black uppercase text-emerald-500 tracking-tighter">+ SPLIT YARD</button>` : ''}</div>
+                        <div class="flex items-center justify-center gap-1"><button onclick="updateVal('${time}',${idx},'buckets',-1)" class="w-6 h-6 bg-slate-100 rounded text-slate-500">-</button><span class="w-4 text-[11px] font-black">${entry.buckets}</span><button onclick="updateVal('${time}',${idx},'buckets',1)" class="w-6 h-6 bg-emerald-600 text-white rounded shadow-sm">+</button></div>
+                        <div class="flex items-center justify-center gap-1"><button onclick="updateVal('${time}',${idx},'tapon',-1)" class="w-6 h-6 bg-slate-100 rounded text-slate-400">-</button><span class="w-4 text-[11px] font-black">${entry.tapon}</span><button onclick="updateVal('${time}',${idx},'tapon',1)" class="w-6 h-6 bg-slate-700 text-white rounded shadow-sm">+</button></div>
+                        <div class="flex items-center justify-between"><select onchange="updateYard('${time}',${idx},this.value)" class="text-[10px] font-black bg-transparent outline-none w-full text-center">${yards.map(y => `<option value="${y}" ${entry.yard === y ? 'selected' : ''}>${y}</option>`).join('')}</select>${idx > 0 ? `<button onclick="removeSplit('${time}',${idx})" class="text-red-400 font-bold ml-1">×</button>` : ''}</div>`;
+                    container.appendChild(row);
+                });
+            });
+            updateTotals();
+        }
+
+        function updateVal(t, i, f, c) { data[currentBoiler][t][i][f] = Math.max(0, data[currentBoiler][t][i][f] + c); markUnsaved(); renderRows(); }
+        function addSplit(t) { data[currentBoiler][t].push({ buckets: 0, tapon: 0, yard: data[currentBoiler][t][0].yard }); markUnsaved(); renderRows(); }
+        function removeSplit(t, i) { data[currentBoiler][t].splice(i, 1); markUnsaved(); renderRows(); }
+        
+        function updateYard(time, idx, val) {
+            data[currentBoiler][time][idx].yard = val;
+            if (idx === 0) {
+                localStorage.setItem('lastUsedYard', val);
+                const startIdx = timeSlots.indexOf(time);
+                ['A', 'B'].forEach(b => {
+                    for (let i = startIdx; i < timeSlots.length; i++) {
+                        const t = timeSlots[i];
+                        if (!data[b][t]) data[b][t] = [{ buckets: 0, tapon: 0, yard: val }];
+                        else data[b][t][0].yard = val;
+                    }
+                });
+            }
+            markUnsaved(); renderRows();
+        }
+
+        function updateTotals() {
+            let dB = 0, dT = 0, nB = 0, nT = 0, curB = 0, curT = 0;
+            let timeline = []; let yardsUsed = new Set(); let prevY = "";
+
+            timeSlots.forEach(t => {
+                const hour = parseInt(t.split(':')[0]);
+                ['A', 'B'].forEach(b => {
+                    (data[b][t] || []).forEach(e => {
+                        if (hour >= 6 && hour <= 17) { dB += e.buckets; dT += e.tapon; }
+                        else { nB += e.buckets; nT += e.tapon; }
+                        if (b === currentBoiler) { curB += e.buckets; curT += e.tapon; }
+                        if (e.buckets > 0) {
+                            yardsUsed.add(e.yard);
+                            if (e.yard !== prevY) { timeline.push({ t, yard: e.yard }); prevY = e.yard; }
+                        }
+                    });
+                });
+            });
+
+            document.getElementById('activeYardBadge').innerText = yardsUsed.size > 0 ? Array.from(yardsUsed).join(' - ') : "---";
+            document.getElementById('dayBuckets').innerText = dB; document.getElementById('dayTapon').innerText = dT;
+            document.getElementById('nightBuckets').innerText = nB; document.getElementById('nightTapon').innerText = nT;
+            document.getElementById('boilerTotalB').innerText = curB; document.getElementById('boilerTotalT').innerText = curT;
+
+            const notesCont = document.getElementById('dashboardNotesContainer');
+            const notesDiv = document.getElementById('dashboardNotes');
+            if (yardsUsed.size > 1 && timeline.length > 1) {
+                notesCont.classList.remove('hidden');
+                let nText = "";
+                for (let i = 1; i < timeline.length; i++) {
+                    nText += `Note: ${timeline[i-1].yard} END - ${timeline[i].t} | ${timeline[i].yard} START - ${timeline[i].t}<br>`;
+                }
+                notesDiv.innerHTML = nText;
+            } else { notesCont.classList.add('hidden'); }
+        }
+
+        function markUnsaved() {
+            hasUnsavedChanges = true;
+            document.getElementById('saveStatus').innerText = "● Unsaved Changes";
+            document.getElementById('saveStatus').className = "text-[8px] font-black text-orange-500 mt-1 italic";
+        }
+
+        function manualSave() {
+            const date = document.getElementById('logDate').value;
+            localStorage.setItem(`coalData_${date}`, JSON.stringify(data));
+            hasUnsavedChanges = false;
+            document.getElementById('saveStatus').innerText = "✓ Record Saved";
+            document.getElementById('saveStatus').className = "text-[8px] font-black text-emerald-500 mt-1 italic";
+            alert("Record Updated and Saved!");
+        }
+
+        function filterHistory() {
+            const selDate = document.getElementById('archiveDateFilter').value || document.getElementById('logDate').value;
+            const currentDayData = JSON.parse(localStorage.getItem(`coalData_${selDate}`) || '{"A":{},"B":{}}');
+            
+            // For Night Shift wrap-around
+            const nextDay = new Date(selDate); nextDay.setDate(nextDay.getDate() + 1);
+            const nextDayStr = nextDay.toISOString().split('T')[0];
+            const nextDayData = JSON.parse(localStorage.getItem(`coalData_${nextDayStr}`) || '{"A":{},"B":{}}');
+
+            let filteredRows = [], yardsUsed = new Set();
+
+            timeSlots.forEach(t => {
+                const hour = parseInt(t.split(':')[0]);
+                const checkRow = (d, time) => {
+                    ['A', 'B'].forEach(b => {
+                        (d[b][time] || []).forEach(e => {
+                            if(e.buckets > 0 || e.tapon > 0) {
+                                filteredRows.push({ t: time, b, bkt: e.buckets, tpn: e.tapon, yard: e.yard });
+                                yardsUsed.add(e.yard);
+                            }
+                        });
+                    });
+                };
+
+                if (currentShift === 'DAY') {
+                    if (hour >= 6 && hour <= 17) checkRow(currentDayData, t);
+                } else {
+                    if (hour >= 18) checkRow(currentDayData, t);
+                    else if (hour < 6) checkRow(nextDayData, t);
+                }
+            });
+
+            const tableHTML = `
+                <div class="bg-white rounded-3xl overflow-hidden mb-4 border border-slate-200 shadow-sm">
+                    <div class="${currentShift === 'DAY' ? 'bg-emerald-600' : 'bg-indigo-600'} text-white px-4 py-3 text-[10px] font-black uppercase tracking-widest text-center">
+                        ${currentShift} SHIFT LOG (${currentShift === 'DAY' ? '06:00 - 18:00' : '18:00 - 06:00'})
+                    </div>
+                    <table class="w-full text-[10px] text-left">
+                        <thead class="bg-slate-50 border-b">
+                            <tr><th class="p-3">TIME</th><th class="p-3 text-center">BLR</th><th class="p-3 text-center">BKT</th><th class="p-3 text-center text-slate-400">TPN</th><th class="p-3 text-right">YARD</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            ${filteredRows.length > 0 ? filteredRows.map(r => `<tr><td class="p-3 font-bold text-slate-700">${r.t}</td><td class="p-3 text-center">${r.b}</td><td class="p-3 text-center font-black">${r.bkt}</td><td class="p-3 text-center text-slate-300">${r.tpn}</td><td class="p-3 text-right font-black text-emerald-600">${r.yard}</td></tr>`).join('') : '<tr><td colspan="5" class="p-6 text-center italic text-slate-400">No records found for this shift</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>`;
+
+           const signatoriesHTML = `
+                <div class="mt-12 space-y-10 px-4 pb-20">
+                    <div class="space-y-6">
+                        <div class="text-center border-b border-slate-300 pb-2">
+                            <input type="text" placeholder="NAME 1 / NAME 2 / NAME 3" 
+                                class="w-full text-[11px] font-black text-center uppercase outline-none bg-transparent placeholder:text-slate-200 tracking-widest">
+                            <p class="text-[8px] font-black text-emerald-600 mt-2 uppercase italic tracking-[0.2em]">Prepared By / Opscrew In-Charge</p>
+                        </div>
+                        
+                        <div class="text-center border-b border-slate-300 pb-2">
+                            <input type="text" placeholder="NAME 1 / NAME 2 / NAME 3" 
+                                class="w-full text-[11px] font-black text-center uppercase outline-none bg-transparent placeholder:text-slate-200 tracking-widest">
+                            <p class="text-[8px] font-black text-emerald-600 mt-2 uppercase italic tracking-[0.2em]">Operators</p>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100">
+                        <p class="text-[8px] font-black text-slate-400 mb-6 uppercase text-center tracking-[0.3em] italic">Verified by Utilities Supervisors</p>
+                        <div class="grid grid-cols-2 gap-x-10 gap-y-6">
+                            <div class="text-center">
+                                <div class="text-[10px] font-black text-slate-800 border-b border-slate-300 pb-1">A. ORTEGA</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-[10px] font-black text-slate-800 border-b border-slate-300 pb-1">A. CALISAY</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-[10px] font-black text-slate-800 border-b border-slate-300 pb-1">A. APUANG</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-[10px] font-black text-slate-800 border-b border-slate-300 pb-1">J. REYES</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            document.getElementById('historyList').innerHTML = `
+                <div class="bg-white p-8 rounded-[3rem] border border-slate-200 text-center shadow-sm mb-6">
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Selected Date</p>
+                    <p class="text-2xl font-black text-slate-900 mb-4">${selDate}</p>
+                    <div class="inline-block bg-emerald-50 border border-emerald-100 px-6 py-2 rounded-full">
+                        <p class="text-[7px] font-black text-emerald-600 uppercase mb-0.5 tracking-tighter">Shift Yards</p>
+                        <p class="text-xs font-black text-emerald-900 uppercase">${yardsUsed.size > 0 ? Array.from(yardsUsed).join(' - ') : 'NONE'}</p>
+                    </div>
+                </div>
+                ${tableHTML}
+                ${signatoriesHTML}`;
+        }
+
+        window.onbeforeunload = function() { if (hasUnsavedChanges) return "Unsaved changes exist!"; };
+        document.getElementById('logDate').valueAsDate = new Date();
+        loadDayData();
+    </script>
+</body>
+</html>
