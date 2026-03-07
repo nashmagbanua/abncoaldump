@@ -193,26 +193,46 @@
             } catch (err) { console.error(err); }
         }
 
-        function renderRows() {
-            const container = document.getElementById('logContainer'); container.innerHTML = '';
-            timeSlots.forEach(time => {
-                data[currentBoiler][time].forEach((entry, idx) => {
-                    const row = document.createElement('div');
-                    row.className = `grid grid-cols-4 p-5 items-center text-center border-b border-slate-50 active:bg-emerald-50 ${idx > 0 ? 'bg-slate-50/50' : 'bg-white'}`;
-                    row.onclick = () => openCompactEditor(time, idx);
-                    row.innerHTML = `
-                        <div class="text-left"><span class="text-[11px] font-black text-slate-800 tracking-tighter">${idx === 0 ? time : ''}</span>
-                        ${idx === 0 ? `<br><button onclick="event.stopPropagation(); addSplit('${time}')" class="text-[7px] font-black text-emerald-500 uppercase">+ Split</button>` : ''}</div>
-                        <div class="text-2xl font-black text-emerald-600">${entry.buckets}</div>
-                        <div class="text-2xl font-black text-slate-400">${entry.tapon}</div>
-                        <div class="flex justify-between items-center text-[13px] font-black uppercase text-slate-900 tracking-widest">
-                            ${entry.yard} ${idx > 0 ? `<button onclick="event.stopPropagation(); removeSplit('${time}',${idx})" class="text-red-400 text-lg">&times;</button>` : ''}
-                        </div>`;
-                    container.appendChild(row);
-                });
-            });
-            updateTotals();
-        }
+      function renderRows() {
+    const container = document.getElementById('logContainer'); 
+    container.innerHTML = '';
+    
+    let globalRowIndex = 0;
+
+    timeSlots.forEach((time) => {
+        data[currentBoiler][time].forEach((entry, idx) => {
+            const row = document.createElement('div');
+            
+            // DARKER ALTERNATE LOGIC
+            const isOddRow = globalRowIndex % 2 !== 0;
+            const bgColor = isOddRow ? 'bg-slate-100' : 'bg-white';
+            
+            row.className = `grid grid-cols-4 p-5 items-center text-center border-b border-slate-200 active:bg-emerald-200 transition-colors ${bgColor}`;
+            row.onclick = () => openCompactEditor(time, idx);
+            
+            // TIME COLUMN LOGIC: Malaki ang Time (idx 0), Maliit ang Split (idx > 0)
+            const timeDisplay = idx === 0 
+                ? `<span class="text-lg font-black text-slate-900 tracking-tighter leading-none">${time}</span>` 
+                : `<span class="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none">↳ Split</span>`;
+
+            row.innerHTML = `
+                <div class="text-left flex flex-col justify-center">
+                    ${timeDisplay}
+                    ${idx === 0 ? `<button onclick="event.stopPropagation(); addSplit('${time}')" class="text-[8px] font-black text-emerald-600 uppercase mt-1 text-left">+ SPLIT</button>` : ''}
+                </div>
+                <div class="text-3xl font-black text-emerald-600 tracking-tighter">${entry.buckets}</div>
+                <div class="text-3xl font-black text-slate-500 tracking-tighter">${entry.tapon}</div>
+                <div class="flex justify-between items-center text-[14px] font-black uppercase text-slate-900 tracking-widest pl-2">
+                    ${entry.yard} 
+                    ${idx > 0 ? `<button onclick="event.stopPropagation(); removeSplit('${time}',${idx})" class="text-red-500 text-3xl font-light ml-2">&times;</button>` : ''}
+                </div>`;
+            
+            container.appendChild(row);
+            globalRowIndex++;
+        });
+    });
+    updateTotals();
+}
 
         function openCompactEditor(time, idx) {
             currentEditRef = { time, idx };
